@@ -1,0 +1,56 @@
+redis-cli -u redis://default:kbt7tdu3fnz.MTY8emt@redis-17072.q.demo.redislabs.com:17072
+
+
+python sensor_emitter.py 1
+python sensor_emitter.py 2
+
+gears-cli run --user default --password kbt7tdu3fnz.MTY8emt --host redis-17072.q.demo.redislabs.com --port 17072 gear_to_hash.py
+
+FT.CREATE idx:car
+ON hash PREFIX 1 "car:"
+SCHEMA brand TAG SORTABLE
+color TAG SORTABLE
+body_type TAG SORTABLE
+speed NUMERIC SORTABLE
+
+FT.SEARCH "idx:car" *
+FT.SEARCH "idx:car" "@body_type:{Estate | SUV} @brand:{BMW}"
+FT.SEARCH "idx:car" "@color:{Pink} @brand:{Mazda} @speed:[120 200]"
+FT.AGGREGATE "idx:car" "@brand:{Toyota}" GROUPBY 1 @color REDUCE COUNT 0 as CNT SORTBY 2 CNT DESC
+
+
+# metrics / observability
+gears-cli run --user default --password kbt7tdu3fnz.MTY8emt --host redis-17072.q.demo.redislabs.com --port 17072 gear_to_stats.py
+
+GET stats:cars:counter
+
+# https://redis.io/commands/pfadd/
+PFCOUNT stats:cars:unique
+
+# https://redis.io/commands/?name=bf.
+BF.EXISTS stats:cars:set F4952152
+
+# https://redis.io/commands/topk.list/
+TOPK.LIST stats:cars:leaderboard withcount
+MEMORY USAGE stats:cars:leaderboard
+
+# https://redis.io/docs/stack/timeseries/commands/
+TS.GET stats:cars:speed
+TS.RANGE stats:cars:speed - + AGGREGATION avg 60000
+TS.RANGE stats:cars:speed - + AGGREGATION min 60000
+TS.RANGE stats:cars:speed - + AGGREGATION max 60000
+TS.CREATERULE stats:cars:speed stats:cars:speed:compacted AGGREGATION avg 60000 
+
+# rgsync
+gears-cli run --user default --password kbt7tdu3fnz.MTY8emt --host redis-17072.q.demo.redislabs.com --port 17072 gear_to_mysql.py REQUIREMENTS rgsync PyMySQL cryptography
+
+GRANT ALL PRIVILEGES ON demo.* TO 'demo_rw'@'%' IDENTIFIED BY '4lly0urb4s3';
+CREATE TABLE IF NOT EXISTS cars (
+    car_id VARCHAR(255) PRIMARY KEY,
+    registration VARCHAR(255),
+    brand VARCHAR(255),
+    color VARCHAR(255),
+    body_type VARCHAR(255),
+    speed INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
